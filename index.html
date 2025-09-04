@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Algoritmo ε-Greedy Interativo</title>
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
+    <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .controls {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        input, button {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        input:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .plots-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .plot-wrapper {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status-running {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .status-complete {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .info-box {
+            background: #e7f3ff;
+            border: 1px solid #b3d7ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .info-box h3 {
+            margin-top: 0;
+            color: #0066cc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎰 Algoritmo ε-Greedy para Multi-Armed Bandit</h1>
+        
+        <div class="info-box">
+            <h3>Como funciona:</h3>
+            <p><strong>Multi-Armed Bandit:</strong> Problema clássico onde um agente deve escolher entre k "alavancas" (opções) para maximizar recompensas ao longo do tempo.</p>
+            <p><strong>ε-Greedy:</strong> Estratégia que equilibra exploração (tentar alavancas aleatórias) e explotação (escolher a melhor alavanca conhecida).</p>
+            <p><strong>Parâmetros:</strong></p>
+            <ul>
+                <li><strong>k:</strong> Número de alavancas/opções disponíveis</li>
+                <li><strong>T:</strong> Número total de tentativas/rodadas</li>
+                <li><strong>ε inicial:</strong> Probabilidade inicial de exploração (valor alto = mais exploração)</li>
+            </ul>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="k-input">Número de Alavancas (k):</label>
+                <input type="number" id="k-input" value="10" min="2" max="50">
+            </div>
+            <div class="control-group">
+                <label for="T-input">Número de Tentativas (T):</label>
+                <input type="number" id="T-input" value="1000" min="100" max="10000" step="100">
+            </div>
+            <div class="control-group">
+                <label for="eps-input">ε Inicial:</label>
+                <input type="number" id="eps-input" value="5.0" min="0.1" max="10" step="0.1">
+            </div>
+            <div class="control-group">
+                <label>&nbsp;</label>
+                <button id="run-btn" py-click="run_simulation">🚀 Executar Simulação</button>
+            </div>
+        </div>
+
+        <div id="status"></div>
+
+        <div class="plots-container">
+            <div class="plot-wrapper">
+                <div id="regret-plot"></div>
+            </div>
+            <div class="plot-wrapper">
+                <div id="optimal-plot"></div>
+            </div>
+        </div>
+    </div>
+
+    <py-config>
+        packages = ["matplotlib", "numpy"]
+    </py-config>
+
+    <py-script>
+import matplotlib.pyplot as plt
+import numpy as np
+import asyncio
+from js import document, console
+from pyodide.ffi import create_proxy
+
+# Global variables to store simulation data
+simulation_data = {}
+
+def update_status(message, status_class=""):
+    """Update the status message"""
+    status_div = document.getElementById("status")
+    status_div.innerHTML = message
+    status_div.className = status_class
+
+def get_input_values():
+    """Get current values from input fields"""
+    k = int(document.getElementById("k-input").value)
+    T = int(document.getElementById("T-input").value)
+    eps_initial = float(document.getElementById("eps-input").value)
+    return k, T, eps_initial
+
+async def run_simulation(event):
+    """Main simulation function"""
+    try:
+        # Disable button and update status
+        run_btn = document.getElementById("run-btn")
+        run_btn.disabled = True
+        update_status("🔄 Executando simulação...", "status-running")
+        
+        # Get parameters
+        k, T, eps_initial = get_input_values()
+        
+        # Initialize arrays
+        eg_pulls = np.zeros(k)
+        eg_estimate_M = np.zeros(k)
+        eg_total_rewards = np.zeros(k)
+        eg_inst_score = np.zeros(T)
+        eg_best_score = np.zeros(T)
+        eg_alg_score = np.zeros(T)
+        eg_regret = np.zeros(T)
+        eg_optimal_action = np.zeros(T)
+        
+        # Generate bandit distributions
+        a = np.random.random(k)
+        b = np.random.random(k)
+        for i in range(k):
+            if a[i] > b[i]:
+                a[i], b[i] = b[i], a[i]
+        
+        mean = (a + b) / 2
+        best = np.max(mean)
+        index_best = np.where(mean == best)[0][0]
+        
+        def pull(i):
+            return np.random.uniform(a[i], b[i])
+        
+        def update_stats_epsilon(reward, i, t):
+            eg_pulls[i] += 1
+            eg_inst_score[t] = reward
+            eg_total_rewards[i] += reward
+            eg_best_score[t] = eg_best_score[t-1] + best
+            eg_alg_score[t] = eg_alg_score[t-1] + eg_inst_score[t]
+            eg_estimate_M[i] = eg_total_rewards[i] / eg_pulls[i]
+            eg_regret[t] = (eg_best_score[t] - eg_alg_score[t]) / (t + 1)
+        
+        success = 0
+        eps = eps_initial
+        
+        # Run simulation
+        for t in range(1, T):
+            # ε-greedy decision
+            if np.random.rand() < eps:
+                kth = np.random.randint(k)
+            else:
+                kth = np.argmax(eg_estimate_M)
+            
+            reward = pull(kth)
+            update_stats_epsilon(reward, kth, t)
+            
+            # Track success rate
+            if kth == index_best:
+                success += 1
+            eg_optimal_action[t] = success / t
+            
+            # Decay epsilon
+            if t > 1:
+                eps = np.power(t, -1/3) * np.power(k * np.log(t), 1/3)
+            
+            # Update progress every 100 iterations
+            if t % max(1, T // 10) == 0:
+                progress = (t / T) * 100
+                update_status(f"🔄 Progresso: {progress:.1f}%", "status-running")
+                await asyncio.sleep(0.01)  # Allow UI to update
+        
+        # Create plots
+        await create_plots(eg_regret, eg_optimal_action, T, k)
+        
+        # Update final status
+        update_status("✅ Simulação completa!", "status-complete")
+        
+    except Exception as e:
+        update_status(f"❌ Erro: {str(e)}", "status-error")
+        console.error(str(e))
+    finally:
+        # Re-enable button
+        run_btn.disabled = False
+
+async def create_plots(regret_data, optimal_data, T, k):
+    """Create and display the plots"""
+    try:
+        # Clear previous plots
+        plt.clf()
+        
+        # Plot 1: Regret
+        plt.figure(figsize=(10, 4))
+        
+        plt.subplot(1, 2, 1)
+        plt.plot(np.arange(1, T), regret_data[1:], 'b-', linewidth=2, alpha=0.8)
+        plt.title(f"Regret ao longo do tempo\n(T={T}, k={k})")
+        plt.xlabel("Rodada T")
+        plt.ylabel("Regret Total")
+        plt.grid(True, alpha=0.3)
+        
+        # Plot 2: Optimal Action
+        plt.subplot(1, 2, 2)
+        plt.plot(np.arange(1, T), optimal_data[1:] * 100, 'g-', linewidth=2, alpha=0.8)
+        plt.title(f"Ações Ótimas\n(T={T}, k={k})")
+        plt.xlabel("Rodada T")
+        plt.ylabel("% Ações Ótimas")
+        plt.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        # Save to different divs
+        plt.figure(figsize=(6, 4))
+        plt.plot(np.arange(1, T), regret_data[1:], 'b-', linewidth=2, alpha=0.8)
+        plt.title(f"Regret para T={T} rodadas e k={k} bandits")
+        plt.xlabel("Rodada T")
+        plt.ylabel("Regret Total")
+        plt.grid(True, alpha=0.3)
+        
+        # Convert to HTML and display
+        import io
+        import base64
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        
+        # Save regret plot
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+        buf.seek(0)
+        regret_img = base64.b64encode(buf.read()).decode()
+        buf.close()
+        
+        regret_div = document.getElementById("regret-plot")
+        regret_div.innerHTML = f'<img src="data:image/png;base64,{regret_img}" style="width:100%; height:auto;">'
+        
+        # Optimal action plot
+        plt.figure(figsize=(6, 4))
+        plt.plot(np.arange(1, T), optimal_data[1:] * 100, 'g-', linewidth=2, alpha=0.8)
+        plt.title(f"Ações Ótimas para T={T} rodadas e k={k} bandits")
+        plt.xlabel("Rodada T")
+        plt.ylabel("% Ações Ótimas")
+        plt.grid(True, alpha=0.3)
+        
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+        buf.seek(0)
+        optimal_img = base64.b64encode(buf.read()).decode()
+        buf.close()
+        
+        optimal_div = document.getElementById("optimal-plot")
+        optimal_div.innerHTML = f'<img src="data:image/png;base64,{optimal_img}" style="width:100%; height:auto;">'
+        
+    except Exception as e:
+        console.error(f"Error creating plots: {str(e)}")
+        raise e
+
+# Initial status
+update_status("👋 Pronto para executar! Ajuste os parâmetros e clique em 'Executar Simulação'")
+    </py-script>
+</body>
+</html>
