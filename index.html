@@ -80,6 +80,7 @@
             padding: 15px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-height: 300px;
         }
         #status {
             margin: 10px 0;
@@ -113,6 +114,10 @@
             margin-top: 0;
             color: #0066cc;
         }
+        img {
+            max-width: 100%;
+            height: auto;
+        }
     </style>
 </head>
 <body>
@@ -138,7 +143,7 @@
             </div>
             <div class="control-group">
                 <label for="T-input">Número de Tentativas (T):</label>
-                <input type="number" id="T-input" value="1000" min="100" max="10000" step="100">
+                <input type="number" id="T-input" value="1000" min="100" max="5000" step="100">
             </div>
             <div class="control-group">
                 <label for="eps-input">ε Inicial:</label>
@@ -150,186 +155,160 @@
             </div>
         </div>
 
-        <div id="status"></div>
+        <div id="status">👋 Pronto para executar! Ajuste os parâmetros e clique em 'Executar Simulação'</div>
 
         <div class="plots-container">
             <div class="plot-wrapper">
-                <div id="regret-plot"></div>
+                <h4>Regret Acumulado</h4>
+                <div id="regret-plot">Clique em 'Executar Simulação' para ver os resultados</div>
             </div>
             <div class="plot-wrapper">
-                <div id="optimal-plot"></div>
+                <h4>Ações Ótimas (%)</h4>
+                <div id="optimal-plot">Clique em 'Executar Simulação' para ver os resultados</div>
             </div>
         </div>
     </div>
 
-    <script type="py" terminal>
+    <py-config>
+        packages = ["matplotlib", "numpy"]
+    </py-config>
+
+    <script type="py">
 import matplotlib.pyplot as plt
 import numpy as np
-import asyncio
 import io
 import base64
 from js import document, console
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-# Configure matplotlib for inline usage
+# Configure matplotlib 
 plt.ioff()
 plt.switch_backend('Agg')
 
 def update_status(message, status_class=""):
-    """Update the status message"""
+    """Update status message"""
     status_div = document.getElementById("status")
     status_div.innerHTML = message
     status_div.className = status_class
 
-def get_input_values():
-    """Get current values from input fields"""
+def get_params():
+    """Get input parameters"""
     k = int(document.getElementById("k-input").value)
     T = int(document.getElementById("T-input").value)
     eps_initial = float(document.getElementById("eps-input").value)
     return k, T, eps_initial
 
+def create_plot_image(fig):
+    """Convert matplotlib figure to base64 image"""
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+    buf.seek(0)
+    img_b64 = base64.b64encode(buf.read()).decode()
+    buf.close()
+    plt.close(fig)
+    return f'<img src="data:image/png;base64,{img_b64}" style="width:100%; height:auto;">'
+
 def run_simulation():
-    """Main simulation function"""
+    """Execute ε-greedy simulation"""
     try:
-        # Disable button and update status
-        run_btn = document.getElementById("run-btn")
-        run_btn.disabled = True
+        # Update UI
+        btn = document.getElementById("run-btn")
+        btn.disabled = True
         update_status("🔄 Executando simulação...", "status-running")
         
         # Get parameters
-        k, T, eps_initial = get_input_values()
+        k, T, eps_initial = get_params()
         
-        # Initialize arrays
-        eg_pulls = np.zeros(k)
-        eg_estimate_M = np.zeros(k)
-        eg_total_rewards = np.zeros(k)
-        eg_inst_score = np.zeros(T)
-        eg_best_score = np.zeros(T)
-        eg_alg_score = np.zeros(T)
-        eg_regret = np.zeros(T)
-        eg_optimal_action = np.zeros(T)
+        # Initialize
+        pulls = np.zeros(k)
+        estimates = np.zeros(k)
+        total_rewards = np.zeros(k)
+        regret = np.zeros(T)
+        optimal_actions = np.zeros(T)
         
-        # Generate bandit distributions
+        # Generate bandit arm distributions
         a = np.random.random(k)
         b = np.random.random(k)
         for i in range(k):
             if a[i] > b[i]:
                 a[i], b[i] = b[i], a[i]
         
-        mean = (a + b) / 2
-        best = np.max(mean)
-        index_best = np.where(mean == best)[0][0]
+        means = (a + b) / 2
+        best_mean = np.max(means)
+        best_arm = np.argmax(means)
         
-        def pull(i):
-            return np.random.uniform(a[i], b[i])
+        def pull_arm(arm):
+            return np.random.uniform(a[arm], b[arm])
         
-        def update_stats_epsilon(reward, i, t):
-            eg_pulls[i] += 1
-            eg_inst_score[t] = reward
-            eg_total_rewards[i] += reward
-            if t > 0:
-                eg_best_score[t] = eg_best_score[t-1] + best
-                eg_alg_score[t] = eg_alg_score[t-1] + eg_inst_score[t]
-            else:
-                eg_best_score[t] = best
-                eg_alg_score[t] = eg_inst_score[t]
-            eg_estimate_M[i] = eg_total_rewards[i] / eg_pulls[i]
-            eg_regret[t] = (eg_best_score[t] - eg_alg_score[t]) / (t + 1)
-        
-        success = 0
+        # Simulation
         eps = eps_initial
+        cumulative_regret = 0
+        optimal_count = 0
         
-        # Run simulation
         for t in range(T):
             # ε-greedy decision
-            if np.random.rand() < eps and t > 0:
-                kth = np.random.randint(k)
+            if t == 0 or np.random.random() < eps:
+                chosen_arm = np.random.randint(k)
             else:
-                kth = np.argmax(eg_estimate_M) if t > 0 else 0
+                chosen_arm = np.argmax(estimates)
             
-            reward = pull(kth)
-            update_stats_epsilon(reward, kth, t)
+            # Pull arm and get reward
+            reward = pull_arm(chosen_arm)
             
-            # Track success rate
-            if kth == index_best:
-                success += 1
-            if t > 0:
-                eg_optimal_action[t] = success / (t + 1)
-            else:
-                eg_optimal_action[t] = 1 if kth == index_best else 0
+            # Update statistics
+            pulls[chosen_arm] += 1
+            total_rewards[chosen_arm] += reward
+            estimates[chosen_arm] = total_rewards[chosen_arm] / pulls[chosen_arm]
+            
+            # Calculate regret
+            instant_regret = best_mean - reward
+            cumulative_regret += instant_regret
+            regret[t] = cumulative_regret / (t + 1)
+            
+            # Track optimal actions
+            if chosen_arm == best_arm:
+                optimal_count += 1
+            optimal_actions[t] = (optimal_count / (t + 1)) * 100
             
             # Decay epsilon
-            if t > 1:
-                eps = np.power(t, -1/3) * np.power(k * np.log(t), 1/3)
+            if t > 0:
+                eps = min(eps_initial, np.power(t, -1/3) * np.power(k * np.log(t), 1/3))
         
         # Create plots
-        create_plots(eg_regret, eg_optimal_action, T, k)
+        # Regret plot
+        fig1, ax1 = plt.subplots(figsize=(6, 4))
+        ax1.plot(range(T), regret, 'b-', linewidth=2)
+        ax1.set_title(f'Regret Médio (k={k}, T={T})')
+        ax1.set_xlabel('Tentativas')
+        ax1.set_ylabel('Regret Médio')
+        ax1.grid(True, alpha=0.3)
         
-        # Update final status
-        update_status("✅ Simulação completa!", "status-complete")
+        regret_img = create_plot_image(fig1)
+        document.getElementById("regret-plot").innerHTML = regret_img
+        
+        # Optimal actions plot
+        fig2, ax2 = plt.subplots(figsize=(6, 4))
+        ax2.plot(range(T), optimal_actions, 'g-', linewidth=2)
+        ax2.set_title(f'Ações Ótimas (k={k}, T={T})')
+        ax2.set_xlabel('Tentativas')
+        ax2.set_ylabel('% Ações Ótimas')
+        ax2.grid(True, alpha=0.3)
+        
+        optimal_img = create_plot_image(fig2)
+        document.getElementById("optimal-plot").innerHTML = optimal_img
+        
+        # Final status
+        final_regret = regret[-1]
+        final_optimal = optimal_actions[-1]
+        update_status(f"✅ Simulação completa! Regret final: {final_regret:.3f}, Ações ótimas: {final_optimal:.1f}%", "status-complete")
         
     except Exception as e:
         update_status(f"❌ Erro: {str(e)}", "status-error")
         console.error(str(e))
     finally:
-        # Re-enable button
-        run_btn.disabled = False
+        btn.disabled = False
 
-def create_plots(regret_data, optimal_data, T, k):
-    """Create and display the plots"""
-    try:
-        # Plot 1: Regret
-        plt.figure(figsize=(6, 4))
-        plt.plot(np.arange(T), regret_data, 'b-', linewidth=2, alpha=0.8)
-        plt.title(f"Regret para T={T} rodadas e k={k} bandits")
-        plt.xlabel("Rodada T")
-        plt.ylabel("Regret Total")
-        plt.grid(True, alpha=0.3)
-        
-        # Save regret plot
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
-        buf.seek(0)
-        regret_img = base64.b64encode(buf.read()).decode()
-        buf.close()
-        plt.close()
-        
-        regret_div = document.getElementById("regret-plot")
-        regret_div.innerHTML = f'<img src="data:image/png;base64,{regret_img}" style="width:100%; height:auto;">'
-        
-        # Plot 2: Optimal Action
-        plt.figure(figsize=(6, 4))
-        plt.plot(np.arange(T), optimal_data * 100, 'g-', linewidth=2, alpha=0.8)
-        plt.title(f"Ações Ótimas para T={T} rodadas e k={k} bandits")
-        plt.xlabel("Rodada T")
-        plt.ylabel("% Ações Ótimas")
-        plt.grid(True, alpha=0.3)
-        
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
-        buf.seek(0)
-        optimal_img = base64.b64encode(buf.read()).decode()
-        buf.close()
-        plt.close()
-        
-        optimal_div = document.getElementById("optimal-plot")
-        optimal_div.innerHTML = f'<img src="data:image/png;base64,{optimal_img}" style="width:100%; height:auto;">'
-        
-    except Exception as e:
-        console.error(f"Error creating plots: {str(e)}")
-        raise e
-
-# Setup button click event
-def setup_event_handler():
-    run_btn = document.getElementById("run-btn")
-    run_btn.onclick = run_simulation
-
-# Initial setup
-update_status("👋 Pronto para executar! Ajuste os parâmetros e clique em 'Executar Simulação'")
-setup_event_handler()
-    </script>
-
-    <script type="py" config='{"packages": ["matplotlib", "numpy"]}'>
+# Setup button click
+document.getElementById("run-btn").onclick = run_simulation
     </script>
 </body>
 </html>
