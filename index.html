@@ -173,7 +173,7 @@
                 <div id="optimal-plot">Clique em 'Executar Simulação' para ver os resultados</div>
             </div>
             <div class="plot-wrapper">
-                <h4>📊 DISTRIBUIÇÃO BINOMIAL REVERSA</h4>
+                <h4>📊 HISTOGRAMA DA DISTRIBUIÇÃO BINOMIAL REVERSA</h4>
                 <div id="distribution-plot">Clique em 'Executar Simulação' para ver os resultados</div>
             </div>
         </div>
@@ -321,7 +321,7 @@ def run_simulation(event=None):
         colors = plt.cm.tab20(np.linspace(0, 1, k))
         bars = ax3.bar(arm_labels, arm_pulls, color=colors, alpha=0.8, edgecolor='black', linewidth=2)
         ax3.set_title(
-            f'DISTRIBUIÇÃO BINOMIAL REVERSA\nEscolhas por Alavanca - k={k}, T={T}',
+            f'HISTOGRAMA DA DISTRIBUIÇÃO BINOMIAL REVERSA\nEscolhas por Alavanca - k={k}, T={T}',
             fontsize=24,
             fontweight='bold'
         )
