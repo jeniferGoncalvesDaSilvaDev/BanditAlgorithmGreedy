@@ -14,7 +14,7 @@
             background-color: #f5f5f5;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1600px;
             margin: 0 auto;
             background: white;
             padding: 30px;
@@ -71,16 +71,21 @@
         }
         .plots-container {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 20px;
             margin-top: 20px;
+        }
+        @media (max-width: 1200px) {
+            .plots-container {
+                grid-template-columns: 1fr;
+            }
         }
         .plot-wrapper {
             background: white;
             padding: 15px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            min-height: 300px;
+            min-height: 400px;
         }
         #status {
             margin: 10px 0;
@@ -165,6 +170,10 @@
             <div class="plot-wrapper">
                 <h4>Ações Ótimas (%)</h4>
                 <div id="optimal-plot">Clique em 'Executar Simulação' para ver os resultados</div>
+            </div>
+            <div class="plot-wrapper">
+                <h4>Distribuição de Escolhas</h4>
+                <div id="distribution-plot">Clique em 'Executar Simulação' para ver os resultados</div>
             </div>
         </div>
     </div>
@@ -275,26 +284,49 @@ def run_simulation(event=None):
         
         # Create plots
         # Regret plot
-        fig1, ax1 = plt.subplots(figsize=(6, 4))
+        fig1, ax1 = plt.subplots(figsize=(8, 5))
         ax1.plot(range(T), regret, 'b-', linewidth=2)
-        ax1.set_title(f'Regret Médio (k={k}, T={T})')
-        ax1.set_xlabel('Tentativas')
-        ax1.set_ylabel('Regret Médio')
+        ax1.set_title(f'Regret Médio (k={k}, T={T})', fontsize=14)
+        ax1.set_xlabel('Tentativas', fontsize=12)
+        ax1.set_ylabel('Regret Médio', fontsize=12)
         ax1.grid(True, alpha=0.3)
         
         regret_img = create_plot_image(fig1)
         document.getElementById("regret-plot").innerHTML = regret_img
         
         # Optimal actions plot
-        fig2, ax2 = plt.subplots(figsize=(6, 4))
+        fig2, ax2 = plt.subplots(figsize=(8, 5))
         ax2.plot(range(T), optimal_actions, 'g-', linewidth=2)
-        ax2.set_title(f'Ações Ótimas (k={k}, T={T})')
-        ax2.set_xlabel('Tentativas')
-        ax2.set_ylabel('% Ações Ótimas')
+        ax2.set_title(f'Ações Ótimas (k={k}, T={T})', fontsize=14)
+        ax2.set_xlabel('Tentativas', fontsize=12)
+        ax2.set_ylabel('% Ações Ótimas', fontsize=12)
         ax2.grid(True, alpha=0.3)
         
         optimal_img = create_plot_image(fig2)
         document.getElementById("optimal-plot").innerHTML = optimal_img
+        
+        # Distribution plot (Binomial Reverse)
+        fig3, ax3 = plt.subplots(figsize=(8, 5))
+        arm_labels = [f'Alavanca {i+1}' for i in range(k)]
+        colors = plt.cm.Set3(np.linspace(0, 1, k))
+        bars = ax3.bar(arm_labels, pulls, color=colors, alpha=0.7, edgecolor='black')
+        ax3.set_title(f'Distribuição de Escolhas por Alavanca (k={k}, T={T})', fontsize=14)
+        ax3.set_xlabel('Alavancas', fontsize=12)
+        ax3.set_ylabel('Número de Vezes Escolhida', fontsize=12)
+        ax3.grid(True, alpha=0.3, axis='y')
+        
+        # Add value labels on bars
+        for bar, count in zip(bars, pulls):
+            height = bar.get_height()
+            ax3.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                    f'{int(count)}', ha='center', va='bottom', fontsize=10)
+        
+        # Rotate x labels if many arms
+        if k > 8:
+            plt.setp(ax3.get_xticklabels(), rotation=45, ha='right')
+        
+        distribution_img = create_plot_image(fig3)
+        document.getElementById("distribution-plot").innerHTML = distribution_img
         
         # Final status
         final_regret = regret[-1]
