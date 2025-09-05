@@ -302,11 +302,12 @@ def run_simulation(event=None):
         console.log("Regret plot created")
         
         # PLOT 2: OPTIMAL ACTIONS - GIGANTE
-        fig2, ax2 = plt.subplots(figsize=(50, 30))
+        console.log("Starting optimal actions plot...")
+        fig2, ax2 = plt.subplots(figsize=(16, 10))
         ax2.plot(range(T), optimal_data, 'g-', linewidth=4)
         ax2.set_title(f'AÇÕES ÓTIMAS - k={k} alavancas, T={T} tentativas', fontsize=24, fontweight='bold')
-        ax2.set_xlabel('Número de Tentativas', fontsize=50)
-        ax2.set_ylabel('Porcentagem de Ações Ótimas (%)', fontsize=50)
+        ax2.set_xlabel('Número de Tentativas', fontsize=20)
+        ax2.set_ylabel('Porcentagem de Ações Ótimas (%)', fontsize=20)
         ax2.tick_params(axis='both', which='major', labelsize=16)
         ax2.grid(True, alpha=0.3)
         plt.tight_layout()
@@ -316,42 +317,51 @@ def run_simulation(event=None):
         console.log("Optimal plot created")
         
         # PLOT 3: DISTRIBUTION - GIGANTE
-        fig3, ax3 = plt.subplots(figsize=(16, 10))
-        arm_labels = [f'Alavanca {i+1}' for i in range(k)]
-        colors = plt.cm.tab20(np.linspace(0, 1, k))
-        bars = ax3.bar(arm_labels, arm_pulls, color=colors, alpha=0.8, edgecolor='black', linewidth=2)
-        ax3.set_title(
-            f'HISTOGRAMA DA DISTRIBUIÇÃO BINOMIAL REVERSA\nEscolhas por Alavanca - k={k}, T={T}',
-            fontsize=24,
-            fontweight='bold'
-        )
-        ax3.set_xlabel('Alavancas Disponíveis', fontsize=20)
-        ax3.set_ylabel('Número de Vezes Escolhida', fontsize=20)
-        ax3.tick_params(axis='both', which='major', labelsize=16)
-        ax3.grid(True, alpha=0.3, axis='y')
+        console.log("Starting distribution plot...")
+        console.log(f"arm_pulls data: {list(arm_pulls)}")
+        console.log(f"best_arm: {best_arm}")
         
-        # Add value labels on bars
-        for i, (bar, count) in enumerate(zip(bars, arm_pulls)):
-            height = bar.get_height()
-            ax3.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
-                    f'{int(count)}', ha='center', va='bottom', fontsize=16, fontweight='bold')
-            # Highlight best arm
-            if i == best_arm:
-                bar.set_edgecolor('red')
-                bar.set_linewidth(4)
-                ax3.text(bar.get_x() + bar.get_width()/2., height + height*0.1,
-                        '★ MELHOR', ha='center', va='bottom', fontsize=14, 
-                        fontweight='bold', color='red')
+        try:
+            fig3, ax3 = plt.subplots(figsize=(16, 10))
+            arm_labels = [f'Alavanca {i+1}' for i in range(k)]
+            colors = plt.cm.tab20(np.linspace(0, 1, k))
+            bars = ax3.bar(arm_labels, arm_pulls, color=colors, alpha=0.8, edgecolor='black', linewidth=2)
+            ax3.set_title(
+                f'HISTOGRAMA DA DISTRIBUIÇÃO BINOMIAL REVERSA\nEscolhas por Alavanca - k={k}, T={T}',
+                fontsize=24,
+                fontweight='bold'
+            )
+            ax3.set_xlabel('Alavancas Disponíveis', fontsize=20)
+            ax3.set_ylabel('Número de Vezes Escolhida', fontsize=20)
+            ax3.tick_params(axis='both', which='major', labelsize=16)
+            ax3.grid(True, alpha=0.3, axis='y')
+            
+            # Add value labels on bars
+            for i, (bar, count) in enumerate(zip(bars, arm_pulls)):
+                height = bar.get_height()
+                if height > 0:
+                    ax3.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                            f'{int(count)}', ha='center', va='bottom', fontsize=16, fontweight='bold')
+                    # Highlight best arm
+                    if i == best_arm:
+                        bar.set_edgecolor('red')
+                        bar.set_linewidth(4)
+                        ax3.text(bar.get_x() + bar.get_width()/2., height + height*0.1,
+                                '★ MELHOR', ha='center', va='bottom', fontsize=14, 
+                                fontweight='bold', color='red')
+            
+            # Rotate x labels if many arms
+            if k > 10:
+                plt.setp(ax3.get_xticklabels(), rotation=45, ha='right')
+            
+            plt.tight_layout()
         
-        # Rotate x labels if many arms
-        if k > 10:
-            plt.setp(ax3.get_xticklabels(), rotation=45, ha='right')
-        
-        plt.tight_layout()
-        
-        distribution_img = create_plot_image(fig3)
-        document.getElementById("distribution-plot").innerHTML = distribution_img
-        console.log("Distribution plot created")
+            distribution_img = create_plot_image(fig3)
+            document.getElementById("distribution-plot").innerHTML = distribution_img
+            console.log("Distribution plot created successfully!")
+        except Exception as e:
+            console.error(f"Error creating distribution plot: {e}")
+            document.getElementById("distribution-plot").innerHTML = f"<p style='color:red;font-size:18px;padding:20px;'>Erro ao criar histograma: {e}</p>"
         
         # Final status
         final_regret = regret_data[-1]
