@@ -14,7 +14,7 @@
             background-color: #f5f5f5;
         }
         .container {
-            max-width: 1600px;
+            max-width: 1800px;
             margin: 0 auto;
             background: white;
             padding: 30px;
@@ -70,17 +70,23 @@
             cursor: not-allowed;
         }
         .plots-container {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 30px;
-            margin-top: 20px;
+            display: block;
+            margin-top: 30px;
         }
         .plot-wrapper {
             background: white;
-            padding: 20px;
+            padding: 25px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            min-height: 600px;
+            margin-bottom: 40px;
+            min-height: 700px;
+        }
+        .plot-wrapper h4 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 18px;
+            text-align: center;
         }
         #status {
             margin: 10px 0;
@@ -159,15 +165,15 @@
 
         <div class="plots-container">
             <div class="plot-wrapper">
-                <h4>Regret Acumulado</h4>
+                <h4>📈 REGRET ACUMULADO</h4>
                 <div id="regret-plot">Clique em 'Executar Simulação' para ver os resultados</div>
             </div>
             <div class="plot-wrapper">
-                <h4>Ações Ótimas (%)</h4>
+                <h4>🎯 AÇÕES ÓTIMAS (%)</h4>
                 <div id="optimal-plot">Clique em 'Executar Simulação' para ver os resultados</div>
             </div>
             <div class="plot-wrapper">
-                <h4>Distribuição de Escolhas</h4>
+                <h4>📊 DISTRIBUIÇÃO BINOMIAL REVERSA</h4>
                 <div id="distribution-plot">Clique em 'Executar Simulação' para ver os resultados</div>
             </div>
         </div>
@@ -204,7 +210,7 @@ def get_params():
 def create_plot_image(fig):
     """Convert matplotlib figure to base64 image"""
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+    fig.savefig(buf, format='png', dpi=120, bbox_inches='tight')
     buf.seek(0)
     img_b64 = base64.b64encode(buf.read()).decode()
     buf.close()
@@ -221,13 +227,14 @@ def run_simulation(event=None):
         
         # Get parameters
         k, T, eps_initial = get_params()
+        console.log(f"Starting simulation with k={k}, T={T}, eps={eps_initial}")
         
         # Initialize
-        pulls = np.zeros(k)
+        arm_pulls = np.zeros(k)
         estimates = np.zeros(k)
         total_rewards = np.zeros(k)
-        regret = np.zeros(T)
-        optimal_actions = np.zeros(T)
+        regret_data = np.zeros(T)
+        optimal_data = np.zeros(T)
         
         # Generate bandit arm distributions
         a = np.random.random(k)
@@ -239,6 +246,7 @@ def run_simulation(event=None):
         means = (a + b) / 2
         best_mean = np.max(means)
         best_arm = np.argmax(means)
+        console.log(f"Best arm: {best_arm}, Best mean: {best_mean}")
         
         def pull_arm(arm):
             return np.random.uniform(a[arm], b[arm])
@@ -259,81 +267,93 @@ def run_simulation(event=None):
             reward = pull_arm(chosen_arm)
             
             # Update statistics
-            pulls[chosen_arm] += 1
+            arm_pulls[chosen_arm] += 1
             total_rewards[chosen_arm] += reward
-            estimates[chosen_arm] = total_rewards[chosen_arm] / pulls[chosen_arm]
+            estimates[chosen_arm] = total_rewards[chosen_arm] / arm_pulls[chosen_arm]
             
             # Calculate regret
             instant_regret = best_mean - reward
             cumulative_regret += instant_regret
-            regret[t] = cumulative_regret / (t + 1)
+            regret_data[t] = cumulative_regret / (t + 1)
             
             # Track optimal actions
             if chosen_arm == best_arm:
                 optimal_count += 1
-            optimal_actions[t] = (optimal_count / (t + 1)) * 100
+            optimal_data[t] = (optimal_count / (t + 1)) * 100
             
             # Decay epsilon
             if t > 0:
                 eps = min(eps_initial, np.power(t, -1/3) * np.power(k * np.log(t), 1/3))
         
-        # Create plots - MUCH LARGER
-        # Regret plot
-        fig1, ax1 = plt.subplots(figsize=(14, 8))
-        ax1.plot(range(T), regret, 'b-', linewidth=3)
-        ax1.set_title(f'Regret Médio (k={k}, T={T})', fontsize=20)
-        ax1.set_xlabel('Tentativas', fontsize=16)
-        ax1.set_ylabel('Regret Médio', fontsize=16)
-        ax1.tick_params(axis='both', which='major', labelsize=14)
+        console.log("Simulation completed, creating plots...")
+        
+        # PLOT 1: REGRET - GIGANTE
+        fig1, ax1 = plt.subplots(figsize=(16, 10))
+        ax1.plot(range(T), regret_data, 'b-', linewidth=4)
+        ax1.set_title(f'REGRET ACUMULADO - k={k} alavancas, T={T} tentativas', fontsize=24, fontweight='bold')
+        ax1.set_xlabel('Número de Tentativas', fontsize=20)
+        ax1.set_ylabel('Regret Médio por Tentativa', fontsize=20)
+        ax1.tick_params(axis='both', which='major', labelsize=16)
         ax1.grid(True, alpha=0.3)
         plt.tight_layout()
         
         regret_img = create_plot_image(fig1)
         document.getElementById("regret-plot").innerHTML = regret_img
+        console.log("Regret plot created")
         
-        # Optimal actions plot
-        fig2, ax2 = plt.subplots(figsize=(14, 8))
-        ax2.plot(range(T), optimal_actions, 'g-', linewidth=3)
-        ax2.set_title(f'Ações Ótimas (k={k}, T={T})', fontsize=20)
-        ax2.set_xlabel('Tentativas', fontsize=16)
-        ax2.set_ylabel('% Ações Ótimas', fontsize=16)
-        ax2.tick_params(axis='both', which='major', labelsize=14)
+        # PLOT 2: OPTIMAL ACTIONS - GIGANTE
+        fig2, ax2 = plt.subplots(figsize=(16, 10))
+        ax2.plot(range(T), optimal_data, 'g-', linewidth=4)
+        ax2.set_title(f'AÇÕES ÓTIMAS - k={k} alavancas, T={T} tentativas', fontsize=24, fontweight='bold')
+        ax2.set_xlabel('Número de Tentativas', fontsize=20)
+        ax2.set_ylabel('Porcentagem de Ações Ótimas (%)', fontsize=20)
+        ax2.tick_params(axis='both', which='major', labelsize=16)
         ax2.grid(True, alpha=0.3)
         plt.tight_layout()
         
         optimal_img = create_plot_image(fig2)
         document.getElementById("optimal-plot").innerHTML = optimal_img
+        console.log("Optimal plot created")
         
-        # Distribution plot (Binomial Reverse) - BIG
-        fig3, ax3 = plt.subplots(figsize=(14, 8))
+        # PLOT 3: DISTRIBUTION - GIGANTE
+        fig3, ax3 = plt.subplots(figsize=(16, 10))
         arm_labels = [f'Alavanca {i+1}' for i in range(k)]
-        colors = plt.cm.Set3(np.linspace(0, 1, k))
-        bars = ax3.bar(arm_labels, pulls, color=colors, alpha=0.8, edgecolor='black', linewidth=2)
-        ax3.set_title(f'Distribuição Binomial Reversa - Escolhas por Alavanca\n(k={k}, T={T})', fontsize=20)
-        ax3.set_xlabel('Alavancas', fontsize=16)
-        ax3.set_ylabel('Número de Vezes Escolhida', fontsize=16)
-        ax3.tick_params(axis='both', which='major', labelsize=14)
+        colors = plt.cm.tab20(np.linspace(0, 1, k))
+        bars = ax3.bar(arm_labels, arm_pulls, color=colors, alpha=0.8, edgecolor='black', linewidth=2)
+        ax3.set_title(f'DISTRIBUIÇÃO BINOMIAL REVERSA\\nEscolhas por Alavanca - k={k}, T={T}', fontsize=24, fontweight='bold')
+        ax3.set_xlabel('Alavancas Disponíveis', fontsize=20)
+        ax3.set_ylabel('Número de Vezes Escolhida', fontsize=20)
+        ax3.tick_params(axis='both', which='major', labelsize=16)
         ax3.grid(True, alpha=0.3, axis='y')
         
-        # Add value labels on bars - BIGGER
-        for bar, count in zip(bars, pulls):
+        # Add value labels on bars
+        for i, (bar, count) in enumerate(zip(bars, arm_pulls)):
             height = bar.get_height()
             ax3.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
-                    f'{int(count)}', ha='center', va='bottom', fontsize=14, fontweight='bold')
+                    f'{int(count)}', ha='center', va='bottom', fontsize=16, fontweight='bold')
+            # Highlight best arm
+            if i == best_arm:
+                bar.set_edgecolor('red')
+                bar.set_linewidth(4)
+                ax3.text(bar.get_x() + bar.get_width()/2., height + height*0.1,
+                        '★ MELHOR', ha='center', va='bottom', fontsize=14, 
+                        fontweight='bold', color='red')
         
         # Rotate x labels if many arms
-        if k > 8:
+        if k > 10:
             plt.setp(ax3.get_xticklabels(), rotation=45, ha='right')
         
         plt.tight_layout()
         
         distribution_img = create_plot_image(fig3)
         document.getElementById("distribution-plot").innerHTML = distribution_img
+        console.log("Distribution plot created")
         
         # Final status
-        final_regret = regret[-1]
-        final_optimal = optimal_actions[-1]
-        update_status(f"✅ Simulação completa! Regret final: {final_regret:.3f}, Ações ótimas: {final_optimal:.1f}%", "status-complete")
+        final_regret = regret_data[-1]
+        final_optimal = optimal_data[-1]
+        most_pulled = np.argmax(arm_pulls)
+        update_status(f"✅ SIMULAÇÃO COMPLETA! Regret final: {final_regret:.3f} | Ações ótimas: {final_optimal:.1f}% | Alavanca mais usada: {most_pulled+1}", "status-complete")
         
     except Exception as e:
         update_status(f"❌ Erro: {str(e)}", "status-error")
@@ -343,6 +363,7 @@ def run_simulation(event=None):
 
 # Setup button click
 document.getElementById("run-btn").onclick = run_simulation
+console.log("Button setup complete")
     </script>
 </body>
 </html>
